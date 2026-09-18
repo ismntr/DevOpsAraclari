@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altyapı Analizi: Ngrok & Docker</title>
+    <meta name="description" content="DevOps Geliştirme Altyapısı Simülatörü - Ngrok ile Ağ İletişimi ve Docker ile Konteyner Mimarisi İnteraktif Analiz ve Ders Notları">
+    <meta name="keywords" content="devops, ngrok, docker, webhook, containerization, reverse proxy, localhost, gitlab, simulation">
+    <meta property="og:title" content="Altyapı Analizi: Ngrok & Docker Simülasyonu">
+    <meta property="og:description" content="Lokal ve Canlı Ortamlarda Ngrok ve Docker Kullanım Senaryolarını İnteraktif Olarak Deneyimleyin.">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            dark: '#0f172a',
+                            panel: '#1e293b',
+                            primary: '#3b82f6',
+                            ngrok: '#8b5cf6',
+                            docker: '#0ea5e9',
+                            success: '#10b981',
+                            danger: '#ef4444'
+                        }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'flow': 'flowAnim 2s linear infinite',
+                    },
+                    keyframes: {
+                        flowAnim: {
+                            '0%': { backgroundPosition: '0px 0px' },
+                            '100%': { backgroundPosition: '20px 20px' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; overflow-x: hidden; }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .tab-content { display: none; animation: fadeIn 0.5s ease-in-out; }
+        .tab-content.active { display: block; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Network flow line styles */
+        .flow-line {
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
+            background-size: 20px 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .flow-active { background-color: #10b981; animation: flowAnim 1s linear infinite; }
+        .flow-error { background-color: #ef4444; }
+        .flow-inactive { background-color: #475569; }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen antialiased selection:bg-brand-primary selection:text-white">
+
+    <nav class="glass-panel border-b border-gray-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-server text-brand-primary text-2xl"></i>
+                    <span class="font-bold text-xl tracking-tight">Altyapı<span class="text-brand-primary">Sim</span></span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="flex items-baseline space-x-1">
+                        <button onclick="switchTab('intro')" id="btn-intro" class="tab-btn active px-4 py-2 rounded-md text-sm font-medium bg-brand-primary/20 text-brand-primary hover:bg-brand-primary/30 transition-all">Genel Bakış</button>
+                        <button onclick="switchTab('ngrok')" id="btn-ngrok" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-all">Ngrok Senaryosu</button>
+                        <button onclick="switchTab('docker')" id="btn-docker" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-all">Docker Senaryosu</button>
+                        <button onclick="switchTab('conclusion')" id="btn-conclusion" class="tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-all">Sonuç & Karar</button>
+                    </div>
+                </div>
+                <!-- Mobile menu button -->
+                <div class="md:hidden">
+                    <button id="mobile-menu-btn" class="text-gray-300 hover:text-white p-2">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="hidden md:hidden bg-brand-panel border-b border-gray-700">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                <button onclick="switchTab('intro'); closeMobileMenu()" class="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-brand-primary bg-brand-primary/10">Genel Bakış</button>
+                <button onclick="switchTab('ngrok'); closeMobileMenu()" class="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Ngrok Senaryosu</button>
+                <button onclick="switchTab('docker'); closeMobileMenu()" class="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Docker Senaryosu</button>
+                <button onclick="switchTab('conclusion'); closeMobileMenu()" class="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-300 hover:text-white hover:bg-gray-700">Sonuç</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-7xl">
+        
+        <!-- ================= INTRO SECTION ================= -->
+        <section id="intro" class="tab-content active">
+            <div class="text-center mb-12">
+                <div class="inline-block px-4 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/30 text-brand-primary text-sm font-bold mb-4 tracking-wider uppercase">
+                    Kapsamlı Sistem Analizi ve Ders Notları
+                </div>
+                <h1 class="text-4xl md:text-5xl font-extrabold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                    Geliştirme Altyapısı: Ngrok ve Docker
+                </h1>
+                <p class="text-lg text-gray-300 max-w-3xl mx-auto leading-relaxed">
+                    Yazılım projeleri sadece kod yazmaktan ibaret değildir. Kodun çalışacağı <strong>ortamın (environment)</strong> hazırlanması, dış sistemlerle (GitLab, Ödeme Geçitleri vb.) <strong>ağ iletişiminin (network)</strong> sağlanması projenin kalbidir. Bu dökümanda, sıklıkla karşımıza çıkan iki teknolojiyi derinlemesine inceliyoruz.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 mb-12">
+                <div class="glass-panel p-8 rounded-2xl border-t-4 border-t-brand-ngrok shadow-lg shadow-brand-ngrok/5">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="p-3 bg-brand-ngrok/20 rounded-xl text-brand-ngrok">
+                            <i class="fa-solid fa-route text-2xl"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold">1. Ağ Erişimi (Network)</h2>
+                    </div>
+                    <p class="text-gray-300 mb-4 leading-relaxed text-sm">
+                        Kendi bilgisayarımız (Localhost) dış dünyaya tamamen kapalı güvenli bir kutudur. Ancak geliştirme yaparken GitLab gibi bulut servislerinin kodumuza anlık veri (Webhook) göndermesi gerekir. Bu erişim problemini çözmek için ağ geçitlerini (Gateway & Tunneling) anlamalıyız.
+                    </p>
+                    <button onclick="switchTab('ngrok')" class="text-brand-ngrok font-bold hover:underline flex items-center gap-2 text-sm mt-auto">
+                        Ağ Senaryosunu İncele <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+
+                <div class="glass-panel p-8 rounded-2xl border-t-4 border-t-brand-docker shadow-lg shadow-brand-docker/5">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="p-3 bg-brand-docker/20 rounded-xl text-brand-docker">
+                            <i class="fa-brands fa-docker text-2xl"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold">2. Çevre Birimleri (Environment)</h2>
+                    </div>
+                    <p class="text-gray-300 mb-4 leading-relaxed text-sm">
+                        Bir uygulamanın veritabanına, önbellek (cache) sistemine ve belirli bağımlılıklara ihtiyacı vardır. İşletim sistemleri (Windows, Mac, Linux) arasındaki farklılıklar, projenin farklı bilgisayarlarda hatalı çalışmasına sebep olur. Bu sorunu Sanallaştırma/Konteynerleştirme ile aşmalıyız.
+                    </p>
+                    <button onclick="switchTab('docker')" class="text-brand-docker font-bold hover:underline flex items-center gap-2 text-sm mt-auto">
+                        Altyapı Senaryosunu İncele <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-blue-900/20 border border-blue-500/30 rounded-xl p-6 text-center text-gray-300">
+                <i class="fa-solid fa-circle-info text-blue-400 text-xl mb-3"></i>
+                <p>Yukarıdaki menüden veya butonlardan ilgili senaryolara geçerek hem interaktif animasyonları çalıştırabilir hem de <strong>Ders Notları</strong> kısmından sistemin arka planında ne olduğunu teorik olarak okuyabilirsiniz.</p>
+            </div>
+        </section>
+
+        <!-- ================= NGROK SCENARIO ================= -->
+        <section id="ngrok" class="tab-content">
+            <div class="flex flex-col lg:flex-row gap-8">
+                
+                <!-- Left Side: Interactive Simulation -->
+                <div class="lg:w-1/2 flex flex-col gap-6">
+                    <div class="mb-2">
+                        <h2 class="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <i class="fa-solid fa-route text-brand-ngrok"></i> Ağ İletişimi Simülasyonu
+                        </h2>
+                        <p class="text-gray-400 text-sm">GitLab Webhook'larının yerel makinenize (Local) ve Canlı Sunucuya (Prod) ulaşım senaryolarını test edin.</p>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="glass-panel p-4 rounded-xl flex flex-col gap-4">
+                        <div>
+                            <span class="block text-xs uppercase tracking-wider text-gray-400 font-bold mb-2">1. Ortamı Seçin</span>
+                            <div class="flex bg-gray-800 rounded-lg p-1">
+                                <button id="env-local" onclick="setNgrokEnv('local')" class="flex-1 py-2 rounded-md bg-brand-primary text-white text-sm font-medium transition-colors">Geliştirme (Lokal)</button>
+                                <button id="env-prod" onclick="setNgrokEnv('prod')" class="flex-1 py-2 rounded-md text-gray-400 hover:text-white text-sm font-medium transition-colors">Canlı Sunucu (Prod)</button>
+                            </div>
+                        </div>
+                        
+                        <div id="ngrok-toggle-container" class="flex items-center justify-between border-t border-gray-700 pt-3">
+                            <span class="text-sm font-medium text-gray-300">Ngrok Tünel Durumu:</span>
+                            <div class="flex items-center gap-3">
+                                <span id="ngrok-status-text" class="text-brand-success font-bold text-sm">AÇIK</span>
+                                <button id="btn-toggle-ngrok" onclick="toggleNgrok()" class="relative inline-flex h-6 w-11 items-center rounded-full bg-brand-success transition-colors">
+                                    <span id="ngrok-toggle-knob" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6 mx-1"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulation Canvas Area -->
+                    <div class="glass-panel rounded-2xl relative min-h-[350px] flex flex-col items-center justify-center overflow-hidden border border-gray-700 shadow-xl">
+                        
+                        <!-- Status Message -->
+                        <div id="ngrok-message" class="absolute top-4 w-[90%] text-center px-4 py-2 rounded-lg bg-brand-success/20 text-brand-success border border-brand-success/30 font-medium text-sm flex items-center justify-center gap-2 transition-all">
+                            <i class="fa-solid fa-circle-check"></i> Webhook başarıyla localhost'a ulaştı!
+                        </div>
+
+                        <div class="w-full px-4 flex items-center justify-between relative mt-12">
+                            
+                            <!-- GitLab Node -->
+                            <div class="flex flex-col items-center z-10 w-24">
+                                <div class="w-14 h-14 rounded-2xl bg-[#fc6d26]/20 border-2 border-[#fc6d26] flex items-center justify-center shadow-[0_0_15px_rgba(252,109,38,0.3)]">
+                                    <i class="fa-brands fa-gitlab text-2xl text-[#fc6d26]"></i>
+                                </div>
+                                <span class="mt-2 font-bold text-xs">GitLab</span>
+                            </div>
+
+                            <!-- Connection Line 1 -->
+                            <div class="flex-grow h-1.5 relative">
+                                <div id="line-1" class="absolute inset-0 flow-line flow-active rounded-full"></div>
+                            </div>
+
+                            <!-- Ngrok / Cloud Node -->
+                            <div id="middle-node" class="flex flex-col items-center z-10 w-32 transition-all duration-500">
+                                <div id="ngrok-icon-box" class="w-16 h-16 rounded-2xl bg-brand-ngrok/20 border-2 border-brand-ngrok flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)] relative">
+                                    <i class="fa-solid fa-tunnel-water text-2xl text-brand-ngrok"></i>
+                                    <div id="ngrok-pulse" class="absolute inset-0 rounded-2xl border-2 border-brand-ngrok animate-ping opacity-75"></div>
+                                </div>
+                                <span id="middle-label" class="mt-2 font-bold text-brand-ngrok text-xs">Ngrok Tüneli</span>
+                            </div>
+
+                            <!-- Connection Line 2 -->
+                            <div class="flex-grow h-1.5 relative">
+                                <div id="line-2" class="absolute inset-0 flow-line flow-active rounded-full"></div>
+                                <!-- Firewall Wall -->
+                                <div id="firewall-block" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-12 bg-red-500 rounded-sm shadow-[0_0_15px_rgba(239,68,68,0.8)] flex items-center justify-center">
+                                    <i class="fa-solid fa-ban text-white text-[10px]"></i>
+                                </div>
+                            </div>
+
+                            <!-- Target Node -->
+                            <div class="flex flex-col items-center z-10 w-24">
+                                <div id="target-icon-box" class="w-14 h-14 rounded-2xl bg-gray-700 border-2 border-gray-500 flex items-center justify-center transition-colors">
+                                    <i id="target-icon" class="fa-solid fa-laptop text-xl text-gray-300"></i>
+                                </div>
+                                <span id="target-label" class="mt-2 font-bold text-xs">Localhost</span>
+                                <span id="target-sub" class="text-[10px] text-gray-500 text-center mt-1">Senin Bilgisayarın</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Dynamic Status Analysis -->
+                    <div class="bg-gray-800/80 p-4 rounded-xl border border-gray-700 text-sm text-gray-300 leading-relaxed shadow-lg min-h-[80px] flex items-center" id="ngrok-analysis-text">
+                        <!-- Content injected via JS -->
+                    </div>
+                </div>
+
+                <!-- Right Side: Lecture Notes -->
+                <div class="lg:w-1/2">
+                    <div class="bg-gray-800/80 rounded-2xl border border-gray-700 h-full p-6 shadow-xl flex flex-col">
+                        <div class="border-b border-gray-600 pb-4 mb-4">
+                            <h3 class="text-xl font-bold flex items-center gap-2 text-white">
+                                <i class="fa-solid fa-book-open text-brand-ngrok"></i> Ders Notları: Ağ Mimarisi
+                            </h3>
+                        </div>
+                        
+                        <div class="space-y-5 overflow-y-auto pr-2 custom-scrollbar flex-grow">
+                            
+                            <div>
+                                <h4 class="font-bold text-brand-primary mb-1">1. Temel Problem: Neden Doğrudan Bağlanamıyoruz?</h4>
+                                <p class="text-sm text-gray-300 leading-relaxed">
+                                    İnternetteki sunucuların (örneğin GitLab) genel (public) IP adresleri vardır. Ancak evinizdeki bilgisayarın IP'si (örn: <code class="bg-gray-900 px-1 rounded text-green-400">192.168.1.5</code>) yereldir (private). Evdeki modemin içinde yer alan <strong>NAT (Network Address Translation)</strong> mekanizması, güvenlik gereği internetten gelen "davetsiz" bağlantıları içeri almaz. Bu yüzden GitLab bir olay tetiklediğinde (Webhook - HTTP POST isteği), isteği doğrudan bilgisayarınıza yollayamaz; modem duvarına (Firewall) çarpar.
+                                </p>
+                            </div>
+
+                            <div>
+                                <h4 class="font-bold text-brand-ngrok mb-1">2. Çözüm: Tersine Tünelleme (Ngrok Nedir?)</h4>
+                                <p class="text-sm text-gray-300 leading-relaxed">
+                                    Ngrok bir <em>Reverse Proxy / Tunneling</em> aracıdır. Bilgisayarınızdan, Ngrok'un bulut sunucularına "içeriden dışarıya" doğru sürekli bir bağlantı açarsınız (Modemler içeriden dışarı çıkan isteklere izin verir). Ngrok size geçici bir URL verir (örn: <code class="bg-gray-900 px-1 rounded text-green-400">https://xyz.ngrok.io</code>). GitLab bu URL'ye istek atar. Ngrok da halihazırda açık olan tünel üzerinden bu isteği sizin bilgisayarınıza iletir.
+                                </p>
+                            </div>
+
+                            <div class="bg-blue-900/20 p-4 rounded-lg border border-blue-500/30">
+                                <h4 class="font-bold text-blue-400 mb-1 text-sm"><i class="fa-solid fa-clipboard-question"></i> Soru: Geliştirme (Local) Aşamasında Çıkarılabilir mi?</h4>
+                                <p class="text-sm text-gray-300">
+                                    <strong>Kesinlikle Hayır.</strong> Geliştirme aşamasında CI/CD (Sürekli Entegrasyon) veya webhook ile çalışan (Ödeme sistemleri, botlar vb.) yapıları test ediyorsak, kodumuz internete açılmak zorundadır. Ngrok olmadan dış dünya kodumuza ulaşamaz ve sistem test edilemez.
+                                </p>
+                            </div>
+
+                            <div class="bg-red-900/20 p-4 rounded-lg border border-red-500/30">
+                                <h4 class="font-bold text-red-400 mb-1 text-sm"><i class="fa-solid fa-server"></i> Soru: Canlı (Prod) Ortamında Neden KULLANILMAZ?</h4>
+                                <ul class="list-disc pl-4 text-sm text-gray-300 space-y-2 mt-2">
+                                    <li><strong>Statik IP ve Domain:</strong> Canlı sunucuların (AWS, Vercel) halihazırda herkesin erişebileceği sabit bir IP'si vardır. Tünele ihtiyaç yoktur.</li>
+                                    <li><strong>Güvenlik Zafiyeti:</strong> Ngrok, sunucudaki güvenlik duvarını (Firewall) by-pass eder. Bu, üretim ortamında devasa bir risktir.</li>
+                                    <li><strong>Performans:</strong> İsteklerin gereksiz yere üçüncü bir sunucudan (Ngrok) geçmesi sisteme gecikme (latency) ekler.</li>
+                                </ul>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= DOCKER SCENARIO ================= -->
+        <section id="docker" class="tab-content">
+            <div class="flex flex-col lg:flex-row gap-8">
+                
+                <!-- Left Side: Interactive Simulation -->
+                <div class="lg:w-[45%] flex flex-col gap-6">
+                    <div class="mb-2">
+                        <h2 class="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <i class="fa-brands fa-docker text-brand-docker"></i> Altyapı Simülasyonu
+                        </h2>
+                        <p class="text-gray-400 text-sm">Ekibe yeni birisi katıldığında "Benim makinemde çalışıyor" sorununu çözümü.</p>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="glass-panel p-4 rounded-xl flex justify-center">
+                        <div class="bg-gray-800 p-1 rounded-xl inline-flex relative overflow-hidden w-full max-w-sm">
+                            <div id="docker-slider-bg" class="absolute w-1/2 h-[calc(100%-8px)] top-1 left-1 bg-brand-docker rounded-lg transition-transform duration-300 ease-in-out"></div>
+                            <button onclick="setDockerState('without')" class="relative z-10 flex-1 py-2 rounded-lg text-sm font-bold transition-colors text-white text-center" id="btn-without-docker">Docker'sız (Geleneksel)</button>
+                            <button onclick="setDockerState('with')" class="relative z-10 flex-1 py-2 rounded-lg text-sm font-bold transition-colors text-gray-400 hover:text-white text-center" id="btn-with-docker">Docker ile (Modern)</button>
+                        </div>
+                    </div>
+
+                    <!-- Simulation Canvas Area -->
+                    <div class="glass-panel rounded-2xl relative min-h-[400px] border border-gray-700 overflow-hidden shadow-xl">
+                        
+                        <!-- STATE 1: Without Docker (Chaos) -->
+                        <div id="docker-chaos" class="absolute inset-0 p-6 transition-opacity duration-500 opacity-100 flex flex-col justify-center gap-4 bg-gray-900/50">
+                            <h3 class="text-center font-bold text-red-400 mb-2 border-b border-red-500/30 pb-2">"Benim Bilgisayarımda Çalışıyordu!" Problemi</h3>
+                            
+                            <!-- Dev 1 (Mac) -->
+                            <div class="bg-red-900/10 border border-red-500/30 p-4 rounded-xl">
+                                <div class="font-bold flex items-center gap-2 mb-3 text-sm">
+                                    <i class="fa-brands fa-apple text-gray-300"></i> Geliştirici A (Mac / ARM İşlemci)
+                                </div>
+                                <ul class="space-y-2 text-sm">
+                                    <li class="flex items-start gap-2">
+                                        <i class="fa-solid fa-spinner fa-spin text-yellow-500 mt-0.5"></i>
+                                        <span class="text-gray-300">Homebrew ile PostgreSQL 14 kurulumu başarısız. Sürüm çakışması.</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Dev 2 (Windows) -->
+                            <div class="bg-orange-900/10 border border-orange-500/30 p-4 rounded-xl">
+                                <div class="font-bold flex items-center gap-2 mb-3 text-sm">
+                                    <i class="fa-brands fa-windows text-blue-300"></i> Geliştirici B (Windows)
+                                </div>
+                                <ul class="space-y-2 text-sm">
+                                    <li class="flex items-start gap-2">
+                                        <i class="fa-solid fa-check text-green-500 mt-0.5"></i>
+                                        <span class="text-gray-300">Kurulum başarılı. Ancak sürüm 16 kuruldu (Sunucu 14 kullanıyor!)</span>
+                                    </li>
+                                    <li class="flex items-start gap-2">
+                                        <i class="fa-solid fa-xmark text-red-500 mt-0.5"></i>
+                                        <span class="text-red-300">Redis hatası. Windows yerel Redis desteklemiyor.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- STATE 2: With Docker (Order) -->
+                        <div id="docker-order" class="absolute inset-0 p-6 transition-opacity duration-500 opacity-0 hidden flex-col justify-center pointer-events-none bg-brand-docker/5">
+                            <div class="bg-gray-900/80 border border-brand-docker/30 rounded-xl p-5 shadow-lg">
+                                <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-700">
+                                    <div class="flex items-center gap-2">
+                                        <i class="fa-solid fa-file-code text-brand-docker"></i>
+                                        <span class="font-mono text-brand-docker font-bold text-sm">docker-compose.yml</span>
+                                    </div>
+                                    <span class="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">Tek Komut: `docker compose up`</span>
+                                </div>
+
+                                <div class="flex flex-col gap-3">
+                                    <!-- Container 1 -->
+                                    <div class="flex items-center justify-between bg-gray-800 border border-gray-600 rounded p-3">
+                                        <div class="flex items-center gap-3">
+                                            <i class="fa-solid fa-database text-blue-400 text-xl"></i>
+                                            <div>
+                                                <div class="font-bold text-sm text-gray-200">PostgreSQL (Konteyner)</div>
+                                                <div class="text-xs text-gray-400">Sabit Sürüm: 14.2</div>
+                                            </div>
+                                        </div>
+                                        <i class="fa-solid fa-circle-check text-green-500"></i>
+                                    </div>
+                                    
+                                    <!-- Container 2 -->
+                                    <div class="flex items-center justify-between bg-gray-800 border border-gray-600 rounded p-3">
+                                        <div class="flex items-center gap-3">
+                                            <i class="fa-solid fa-layer-group text-red-400 text-xl"></i>
+                                            <div>
+                                                <div class="font-bold text-sm text-gray-200">Redis Cache (Konteyner)</div>
+                                                <div class="text-xs text-gray-400">Sabit Sürüm: 7.0 (Mac/Win uyumlu)</div>
+                                            </div>
+                                        </div>
+                                        <i class="fa-solid fa-circle-check text-green-500"></i>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 text-center text-sm font-medium text-brand-success bg-brand-success/10 py-2 rounded">
+                                    <i class="fa-solid fa-bolt"></i> Tüm geliştiricilerde %100 aynı izole ortam.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Side: Lecture Notes -->
+                <div class="lg:w-[55%]">
+                    <div class="bg-gray-800/80 rounded-2xl border border-gray-700 h-full p-6 shadow-xl flex flex-col">
+                        <div class="border-b border-gray-600 pb-4 mb-4">
+                            <h3 class="text-xl font-bold flex items-center gap-2 text-white">
+                                <i class="fa-solid fa-book-open text-brand-docker"></i> Ders Notları: Konteyner Mimarisi
+                            </h3>
+                        </div>
+                        
+                        <div class="space-y-5 overflow-y-auto pr-2 custom-scrollbar flex-grow">
+                            
+                            <div>
+                                <h4 class="font-bold text-red-400 mb-1">1. Temel Problem: Bağımlılık Cehennemi (Dependency Hell)</h4>
+                                <p class="text-sm text-gray-300 leading-relaxed">
+                                    Modern bir yazılım projesi tek başına çalışmaz. Arkasında bir veritabanı (Postgres), mesaj kuyruğu (RabbitMQ), önbellek (Redis) gibi "bağımlılıkları" (dependencies) vardır. Eğer ekipte 5 kişi varsa ve herkes bunları kendi sistemine (Mac, Windows, Linux) manuel kurmaya çalışırsa; portlar çakışır, ortam değişkenleri yanlış ayarlanır, sürümler birbirini tutmaz. Yazılım ekibi günlerini "altyapı kurmakla" harcar.
+                                </p>
+                            </div>
+
+                            <div>
+                                <h4 class="font-bold text-brand-docker mb-1">2. Çözüm: Konteynerleştirme (Containerization)</h4>
+                                <p class="text-sm text-gray-300 leading-relaxed">
+                                    Sanallaştırmanın (Sanal Makine / VM) aksine, Docker tüm bir işletim sistemini kopyalamaz. Sadece uygulamanın çalışması için gereken kütüphaneleri bir "Konteyner" (Container) içine paketler. Konteynerler hafiftir, bilgisayarınızın çekirdeğini (Kernel) ortak kullanır ama birbirlerinden tamamen <strong>izoledir</strong>. <br><br>
+                                    <code class="bg-gray-900 px-1 rounded text-brand-primary">docker-compose.yml</code> dosyası bu altyapının "kodlanmış" halidir (Infrastructure as Code). Projeyi indiren biri terminale sadece <code class="bg-gray-900 px-1 rounded text-green-400">docker compose up</code> yazar ve saniyeler içinde her şey mükemmel uyumla ayağa kalkar.
+                                </p>
+                            </div>
+
+                            <div class="bg-blue-900/20 p-4 rounded-lg border border-blue-500/30">
+                                <h4 class="font-bold text-blue-400 mb-1 text-sm"><i class="fa-solid fa-code-branch"></i> Soru: CI/CD ve Canlı Ortamdaki Yeri Nedir?</h4>
+                                <p class="text-sm text-gray-300">
+                                    Docker sadece geliştirme aşaması için değildir, <strong>projenin varoluş nedenidir.</strong> DevOps süreçlerinde kodunuz testleri geçtiğinde bir "Docker İmajı" (Image - okunabilir şablon) haline getirilir. Canlı sunucuya (Production) sadece bu imaj gönderilir. Böylece, lokal bilgisayarınızda çalışan her şeyin, canlı sunucuda da <strong>birebir aynı şekilde (%100 çevre eşitliği)</strong> çalışacağı garanti edilir.
+                                </p>
+                            </div>
+
+                            <div class="bg-green-900/20 p-4 rounded-lg border border-green-500/30">
+                                <h4 class="font-bold text-green-400 mb-1 text-sm"><i class="fa-solid fa-clipboard-check"></i> Sonuç: Projeden Çıkarılabilir mi?</h4>
+                                <p class="text-sm text-gray-300">
+                                    <strong>HAYIR. Asla önerilmez.</strong> Docker'ı çıkarmak, projeyi modern standartlardan koparıp monolitik, kırılgan ve kurulumu saatler süren eski tip bir yapıya geri döndürmek demektir.
+                                </p>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= CONCLUSION SECTION ================= -->
+        <section id="conclusion" class="tab-content">
+            <div class="text-center mb-10">
+                <h2 class="text-3xl font-bold mb-4">Mimari Analiz ve Gelecek Stratejisi</h2>
+                <p class="text-gray-400 max-w-2xl mx-auto">Tüm bu teorik veriler ve pratik zorunluluklar ışığında, projenin canlı ortama (Production) geçiş serüveninde bu iki araca dair vereceğimiz nihai teknik kararlar.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                
+                <!-- Ngrok Verdict -->
+                <div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 relative overflow-hidden flex flex-col">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-brand-ngrok/10 rounded-bl-full -mr-4 -mt-4"></div>
+                    <div class="flex items-center gap-4 mb-6 relative z-10">
+                        <div class="bg-brand-ngrok/20 p-3 rounded-lg"><i class="fa-solid fa-route text-3xl text-brand-ngrok"></i></div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Ngrok Stratejisi</h3>
+                            <span class="text-xs font-bold text-gray-400 tracking-wider uppercase">Tersine Vekil Sunucu (Reverse Proxy)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6 relative z-10 flex-grow">
+                        <div>
+                            <h4 class="font-bold text-sm text-gray-200 border-b border-gray-700 pb-1 mb-2">Statü: "Gerekli Bir Kötülük"</h4>
+                            <p class="text-sm text-gray-400">Ngrok, mimarimizin kalıcı bir parçası değildir. Sadece fiziksel engelleri (NAT/Firewall) aşmak için kullandığımız bir geliştirici (Dev) aracıdır.</p>
+                        </div>
+                        
+                        <div class="bg-gray-900/50 p-4 rounded border border-gray-700">
+                            <h4 class="text-brand-danger font-bold text-sm mb-2"><i class="fa-solid fa-skull-crossbones"></i> Neden Prod'da Kullanılmaz?</h4>
+                            <ul class="text-xs text-gray-400 space-y-1 list-disc pl-4">
+                                <li><strong>Darboğaz (Bottleneck):</strong> Tüm trafiğin ABD merkezli Ngrok sunucularından sekmesi aşırı gecikmeye (latency) neden olur.</li>
+                                <li><strong>Güvenlik:</strong> Kötü niyetli kişilerin güvenlik duvarınızı atlayarak doğrudan uygulamanıza erişmesine kapı aralar.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 pt-4 border-t border-gray-700 relative z-10 bg-brand-ngrok/10 -mx-8 -mb-8 px-8 py-5">
+                        <p class="text-sm font-bold text-white">NİHAİ KARAR:</p>
+                        <p class="text-brand-ngrok mt-1 font-medium">Proje gerçek sunucuya çıktığı saniye Ngrok projeden TAMAMEN SİLİNECEKTİR. Yerini statik IP'ler ve Nginx/Traefik gibi gerçek proxy sunucuları alacaktır.</p>
+                    </div>
+                </div>
+
+                <!-- Docker Verdict -->
+                <div class="bg-gray-800 border border-gray-700 rounded-2xl p-8 relative overflow-hidden flex flex-col">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-brand-docker/10 rounded-bl-full -mr-4 -mt-4"></div>
+                    <div class="flex items-center gap-4 mb-6 relative z-10">
+                        <div class="bg-brand-docker/20 p-3 rounded-lg"><i class="fa-brands fa-docker text-3xl text-brand-docker"></i></div>
+                        <div>
+                            <h3 class="text-2xl font-bold">Docker Stratejisi</h3>
+                            <span class="text-xs font-bold text-gray-400 tracking-wider uppercase">Konteynerleştirme (Containerization)</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-6 relative z-10 flex-grow">
+                        <div>
+                            <h4 class="font-bold text-sm text-gray-200 border-b border-gray-700 pb-1 mb-2">Statü: "Sistemin Temel Taşı"</h4>
+                            <p class="text-sm text-gray-400">Docker, projemizin kurulum, test edilme ve yayınlanma (deployment) standartlarını belirleyen yegane teknolojidir. Ondan vazgeçilemez.</p>
+                        </div>
+
+                        <div class="bg-gray-900/50 p-4 rounded border border-gray-700">
+                            <h4 class="text-brand-success font-bold text-sm mb-2"><i class="fa-solid fa-shield-halved"></i> Neden Prod'da Zorunludur?</h4>
+                            <ul class="text-xs text-gray-400 space-y-1 list-disc pl-4">
+                                <li><strong>Çevre Eşitliği (Parity):</strong> Geliştiricinin bilgisayarındaki yazılım ile sunucudaki yazılım milimetrik olarak aynı kutuda (imaj) çalışır.</li>
+                                <li><strong>Ölçeklenebilirlik (Scaling):</strong> Yoğunluk anında Docker imajları saniyeler içinde çoğaltılarak (Kubernetes veya Swarm ile) yük dağıtılabilir.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 pt-4 border-t border-gray-700 relative z-10 bg-brand-docker/10 -mx-8 -mb-8 px-8 py-5">
+                        <p class="text-sm font-bold text-white">NİHAİ KARAR:</p>
+                        <p class="text-brand-docker mt-1 font-medium">Docker projeden çıkarılmayacak, aksine bulut mimarisinin (CI/CD Pipeline) merkezi yapı taşı olarak daha da derinlemesine entegre edilecektir.</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- Tab Navigation Logic ---
+        function switchTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.remove('active');
+            });
+            // Show target tab
+            document.getElementById(tabId).classList.add('active');
+            
+            // Update Navigation styling
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = "tab-btn px-4 py-2 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition-all";
+            });
+            
+            // Mobile styling is different, so we specifically target desktop buttons for the highlight
+            const activeDesktopBtn = document.getElementById(`btn-${tabId}`);
+            if(activeDesktopBtn) {
+                activeDesktopBtn.className = "tab-btn active px-4 py-2 rounded-md text-sm font-medium bg-brand-primary/20 text-brand-primary hover:bg-brand-primary/30 transition-all";
+            }
+        }
+
+        // Mobile Menu Toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        function closeMobileMenu() {
+            mobileMenu.classList.add('hidden');
+        }
+
+        // --- Ngrok Simulation Logic ---
+        let ngrokEnv = 'local';
+        let ngrokActive = true;
+
+        function updateNgrokVisuals() {
+            const line1 = document.getElementById('line-1');
+            const line2 = document.getElementById('line-2');
+            const firewall = document.getElementById('firewall-block');
+            const messageBox = document.getElementById('ngrok-message');
+            const middleNode = document.getElementById('middle-node');
+            const ngrokToggleContainer = document.getElementById('ngrok-toggle-container');
+            const analysisText = document.getElementById('ngrok-analysis-text');
+            const targetIconBox = document.getElementById('target-icon-box');
+            const targetIcon = document.getElementById('target-icon');
+            const targetLabel = document.getElementById('target-label');
+            const targetSub = document.getElementById('target-sub');
+
+            if (ngrokEnv === 'prod') {
+                // Production State
+                ngrokToggleContainer.style.opacity = '0.3';
+                ngrokToggleContainer.style.pointerEvents = 'none';
+                
+                middleNode.innerHTML = `
+                    <div class="w-20 h-20 rounded-2xl bg-brand-primary/20 border-2 border-brand-primary flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.4)]">
+                        <i class="fa-solid fa-cloud text-3xl text-brand-primary"></i>
+                    </div>
+                    <span class="mt-3 font-bold text-brand-primary text-sm">Gerçek Domain</span>
+                    <span class="text-xs text-gray-400 text-center">api.projemiz.com</span>
+                `;
+                
+                targetIconBox.className = "w-16 h-16 rounded-2xl bg-green-900/30 border-2 border-green-500 flex items-center justify-center";
+                targetIcon.className = "fa-solid fa-server text-2xl text-green-500";
+                targetLabel.innerText = "Cloud Sunucu";
+                targetSub.innerText = "AWS / Vercel";
+
+                line1.className = "absolute inset-0 flow-line flow-active rounded-full";
+                line2.className = "absolute inset-0 flow-line flow-active rounded-full";
+                firewall.classList.add('hidden');
+                
+                messageBox.className = "absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg bg-brand-primary/20 text-brand-primary border border-brand-primary/30 font-medium text-sm flex items-center gap-2 transition-all";
+                messageBox.innerHTML = '<i class="fa-solid fa-earth-americas"></i> Ngrok yok. İstek doğrudan domaine ulaştı.';
+                
+                analysisText.innerHTML = "Canlı ortamdasınız. Sunucunuzun dış dünyaya açık statik bir IP'si ve Domain'i olduğu için <strong class='text-brand-primary'>Ngrok'a ihtiyaç yoktur</strong> ve projeden çıkarılmıştır.";
+
+            } else {
+                // Local State
+                ngrokToggleContainer.style.opacity = '1';
+                ngrokToggleContainer.style.pointerEvents = 'auto';
+
+                middleNode.innerHTML = `
+                    <div id="ngrok-icon-box" class="w-20 h-20 rounded-2xl ${ngrokActive ? 'bg-brand-ngrok/20 border-brand-ngrok' : 'bg-gray-800 border-gray-600'} border-2 flex items-center justify-center relative transition-colors">
+                        <i class="fa-solid fa-tunnel-water text-3xl ${ngrokActive ? 'text-brand-ngrok' : 'text-gray-500'}"></i>
+                        ${ngrokActive ? '<div class="absolute inset-0 rounded-2xl border-2 border-brand-ngrok animate-ping opacity-75"></div>' : ''}
+                    </div>
+                    <span class="mt-3 font-bold ${ngrokActive ? 'text-brand-ngrok' : 'text-gray-500'} text-sm">Ngrok Tüneli</span>
+                    <span class="text-xs text-gray-400 text-center">${ngrokActive ? 'Geçici URL' : 'Kapalı'}</span>
+                `;
+
+                targetIconBox.className = "w-16 h-16 rounded-2xl bg-gray-700 border-2 border-gray-500 flex items-center justify-center transition-colors";
+                targetIcon.className = "fa-solid fa-laptop text-2xl text-gray-300";
+                targetLabel.innerText = "Localhost";
+                targetSub.innerText = "Senin Bilgisayarın";
+
+                if (ngrokActive) {
+                    line1.className = "absolute inset-0 flow-line flow-active rounded-full";
+                    line2.className = "absolute inset-0 flow-line flow-active rounded-full";
+                    firewall.classList.add('hidden');
+                    
+                    messageBox.className = "absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg bg-brand-success/20 text-brand-success border border-brand-success/30 font-medium text-sm flex items-center gap-2 transition-all opacity-100";
+                    messageBox.innerHTML = '<i class="fa-solid fa-circle-check"></i> Webhook başarıyla localhost\'a ulaştı!';
+                    
+                    analysisText.innerHTML = "Şu an geliştirme ortamındasınız. GitLab, internete kapalı olan yerel bilgisayarınıza doğrudan erişemez. <strong class='text-brand-ngrok'>Ngrok</strong>, bu engeli aşarak testleri yapabilmemizi sağlayan geçici bir köprüdür. Çıkarılamaz.";
+                } else {
+                    line1.className = "absolute inset-0 flow-line flow-error rounded-full";
+                    line2.className = "absolute inset-0 flow-line flow-inactive rounded-full";
+                    firewall.classList.remove('hidden');
+                    
+                    messageBox.className = "absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg bg-brand-danger/20 text-brand-danger border border-brand-danger/30 font-medium text-sm flex items-center gap-2 transition-all opacity-100";
+                    messageBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Hata: Bağlantı Reddedildi! Modem engelledi.';
+                    
+                    analysisText.innerHTML = "<strong class='text-brand-danger'>Ngrok kapatıldı!</strong> GitLab artık bilgisayarınıza ulaşamıyor. Webhook'lar başarısız olacak ve lokalde test yapamayacaksınız. Bu yüzden geliştirme aşamasında Ngrok'u projeden çıkaramayız.";
+                }
+            }
+        }
+
+        function setNgrokEnv(env) {
+            ngrokEnv = env;
+            
+            // Styling buttons
+            document.getElementById('env-local').className = env === 'local' 
+                ? "px-4 py-2 rounded-md bg-brand-primary text-white text-sm font-medium transition-colors" 
+                : "px-4 py-2 rounded-md text-gray-400 hover:text-white text-sm font-medium transition-colors";
+                
+            document.getElementById('env-prod').className = env === 'prod' 
+                ? "px-4 py-2 rounded-md bg-brand-primary text-white text-sm font-medium transition-colors" 
+                : "px-4 py-2 rounded-md text-gray-400 hover:text-white text-sm font-medium transition-colors";
+                
+            updateNgrokVisuals();
+        }
+
+        function toggleNgrok() {
+            if(ngrokEnv === 'prod') return; // Cannot toggle in prod
+            
+            ngrokActive = !ngrokActive;
+            
+            const knob = document.getElementById('ngrok-toggle-knob');
+            const toggleBtn = document.getElementById('btn-toggle-ngrok');
+            const statusText = document.getElementById('ngrok-status-text');
+            
+            if(ngrokActive) {
+                knob.classList.add('translate-x-6');
+                toggleBtn.classList.replace('bg-gray-600', 'bg-brand-success');
+                statusText.innerText = 'AÇIK';
+                statusText.className = 'text-brand-success font-bold text-sm';
+            } else {
+                knob.classList.remove('translate-x-6');
+                toggleBtn.classList.replace('bg-brand-success', 'bg-gray-600');
+                statusText.innerText = 'KAPALI';
+                statusText.className = 'text-gray-500 font-bold text-sm';
+            }
+            
+            updateNgrokVisuals();
+        }
+
+        // --- Docker Simulation Logic ---
+        function setDockerState(state) {
+            const chaosSection = document.getElementById('docker-chaos');
+            const orderSection = document.getElementById('docker-order');
+            const btnWithout = document.getElementById('btn-without-docker');
+            const btnWith = document.getElementById('btn-with-docker');
+            const sliderBg = document.getElementById('docker-slider-bg');
+
+            if(state === 'without') {
+                sliderBg.style.transform = 'translateX(0)';
+                sliderBg.style.backgroundColor = '#ef4444'; // Red for chaos
+                
+                btnWithout.classList.replace('text-gray-400', 'text-white');
+                btnWith.classList.replace('text-white', 'text-gray-400');
+                
+                chaosSection.style.display = 'flex';
+                // Trigger reflow to restart animation
+                void chaosSection.offsetWidth;
+                chaosSection.classList.replace('opacity-0', 'opacity-100');
+                
+                orderSection.classList.replace('opacity-100', 'opacity-0');
+                setTimeout(() => {
+                    if(sliderBg.style.transform === 'translateX(0px)' || sliderBg.style.transform === 'translateX(0)') {
+                       orderSection.style.display = 'none';
+                       orderSection.classList.remove('pointer-events-auto');
+                       orderSection.classList.add('pointer-events-none');
+                    }
+                }, 500);
+
+            } else {
+                sliderBg.style.transform = 'translateX(100%)';
+                sliderBg.style.backgroundColor = '#0ea5e9'; // Blue for docker
+                
+                btnWith.classList.replace('text-gray-400', 'text-white');
+                btnWithout.classList.replace('text-white', 'text-gray-400');
+                
+                orderSection.style.display = 'flex';
+                // Trigger reflow
+                void orderSection.offsetWidth;
+                orderSection.classList.replace('opacity-0', 'opacity-100');
+                orderSection.classList.replace('pointer-events-none', 'pointer-events-auto');
+                
+                chaosSection.classList.replace('opacity-100', 'opacity-0');
+                setTimeout(() => {
+                     if(sliderBg.style.transform === 'translateX(100%)') {
+                        chaosSection.style.display = 'none';
+                     }
+                }, 500);
+            }
+        }
+
+        // Initialize state on load
+        window.onload = function() {
+            setDockerState('without'); // Start with chaos to show contrast
+            updateNgrokVisuals();
+        };
+
+    </script>
+</body>
+</html>
